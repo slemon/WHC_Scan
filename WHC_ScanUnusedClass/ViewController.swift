@@ -62,8 +62,10 @@ class ViewController: NSViewController {
     @IBOutlet weak var carefullyRadio: NSButton!
     
     private lazy var filePathArray = [String]()
+    private lazy var needDeleteFilePathArray = [String]()
     private lazy var superClassArray = [String]()
     private lazy var classNameArray = [String]()
+    private lazy var classToFileMap = [String : String]()
     
     private lazy var noReferenceImageNameArray = [String]()
     private let fileManager = FileManager.default
@@ -156,13 +158,19 @@ class ViewController: NSViewController {
         processBar.doubleValue = 0;
         if directoryText.stringValue.count > 0 {
             filePathArray.removeAll()
+            needDeleteFilePathArray.removeAll()
             superClassArray.removeAll()
             classNameArray.removeAll()
             processBar.doubleValue = 0;
             progressLabel.stringValue = "扫描之前，需要计算统计项目所有的类，马上开始别着急请耐心等待一小会........^_^"
+            let directoryFileNameArray = try! self.fileManager.contentsOfDirectory(atPath: self.directoryText.stringValue)
+
             DispatchQueue.global().async(execute: {
-                let directoryFileNameArray = try! self.fileManager.contentsOfDirectory(atPath: self.directoryText.stringValue)
                 self.startCalculateAllClass(directoryFileNameArray, path: self.directoryText.stringValue)
+                let deletePath = "/Users/sundalong/Desktop/KuaiShou/kidea/ios/Runner";
+                let needDeleteFileNameArray = try! self.fileManager.contentsOfDirectory(atPath: deletePath)
+                self.findNeedDeleteFilePath(needDeleteFileNameArray, path: deletePath)
+
                 let classCount = self.classNameArray.count
                 DispatchQueue.main.async {
                     self.classCountLabel.stringValue = "项目所有的类: 总计\(classCount)个"
@@ -406,12 +414,46 @@ class ViewController: NSViewController {
                     }
                 }
             }
+            for(_, name) in classNames.enumerated() {
+                classToFileMap[String(name)] = path
+            }
             return classNames
+        }
+        for(_, name) in classNames.enumerated() {
+            classToFileMap[String(name)] = path
         }
         return classNames
     }
     
-    private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: String!) {
+    private func findNeedDeleteFilePath(_ directoryFileNameArray :[String]!, path: String!) {
+         autoreleasepool {
+            if directoryFileNameArray != nil {
+                for(_, fileName) in directoryFileNameArray.enumerated() {
+                    if fileName.hasSuffix(".xcassets") || fileName.hasSuffix(".bundle") {continue}
+                    var isDirectory = ObjCBool(true)
+                    let pathName = path + "/" + fileName
+                    let exist = fileManager.fileExists(atPath: pathName, isDirectory: &isDirectory)
+                    if exist && isDirectory.boolValue {
+                        let tempDirectoryFileNameArray = try! fileManager.contentsOfDirectory(atPath: pathName)
+                        findNeedDeleteFilePath(tempDirectoryFileNameArray, path: pathName)
+                    } else {
+                        switch scanProjectType {
+                        case .android:
+                            if fileName.hasSuffix(".java") && fileName != "R.java" && fileName != "BuildConfig.java" {
+                                needDeleteFilePathArray.append(pathName)
+                                }
+                         case .iOS:
+                            if fileName.hasSuffix(".swift") || fileName.hasSuffix(".m") || fileName.hasSuffix(".h") || fileName.hasSuffix(".mm"){
+                                needDeleteFilePathArray.append(pathName)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: String!) {
         autoreleasepool {
             if directoryFileNameArray != nil {
                 for (_, fileName) in directoryFileNameArray.enumerated() {
@@ -562,7 +604,7 @@ class ViewController: NSViewController {
                 self.progressLabel.stringValue = className
             }
             var isReference = false
-            for filePath in filePathArray {
+            for filePath in needDeleteFilePathArray {
                 let contentData = try! Data(contentsOf: URL(fileURLWithPath: filePath), options: NSData.ReadingOptions.mappedIfSafe);
                 let fileContent = NSString(data: contentData, encoding: String.Encoding.utf8.rawValue)
                 if fileContent != nil {
@@ -607,7 +649,9 @@ class ViewController: NSViewController {
                                 break
                             }
                         }else if filePath.hasSuffix(".m") {
-                            if handleFileContent.contains("[" + className) || handleFileContent.contains(className + ".new") || handleFileContent.contains(className + "*") ||
+                            if handleFileContent.contains("[" + className) || handleFileContent.contains(className + ".new") ||
+                                handleFileContent.contains("NSStringFromClass(@" + className) ||
+                                handleFileContent.contains(className + "*") ||
                                 handleFileContent.contains("<" + className + ">") || superClassArray.contains(className) {
                                 isReference = true
                                 break
@@ -618,12 +662,52 @@ class ViewController: NSViewController {
                 }
             }
             if !isReference {
+//                DispatchQueue.main.sync(execute: {
+//                    self.notUseClassCount += 1
+//                    let originTxt = self.notUseClassResultContentView.string.count == 0 ? "" : self.notUseClassResultContentView.string
+//                    self.setNotUseResultContent(content: originTxt + ">>>>> " + className + "\n")
+//                    self.notUseClassCountLabel.stringValue = "项目没使用的类: 总计\(self.notUseClassCount)个"
+//                })
+            }else {
                 DispatchQueue.main.sync(execute: {
                     self.notUseClassCount += 1
                     let originTxt = self.notUseClassResultContentView.string.count == 0 ? "" : self.notUseClassResultContentView.string
                     self.setNotUseResultContent(content: originTxt + ">>>>> " + className + "\n")
-                    self.notUseClassCountLabel.stringValue = "项目没使用的类: 总计\(self.notUseClassCount)个"
+                    self.notUseClassCountLabel.stringValue = "使用的类: 总计\(self.notUseClassCount)个"
+                    
+                    let mPath = classToFileMap[className]
+                    if(mPath != nil) {
+                        let newPath = "/Users/sundalong/Desktop/needFile/"
+                        
+                        let mNewPath = newPath + URL(fileURLWithPath: mPath!).lastPathComponent
+                        if self.fileManager.fileExists(atPath: mPath!) {
+                            
+                            do {
+                                 try fileManager.copyItem(atPath: mPath!, toPath: mNewPath)
+                                } catch let error {
+                                 print("\nError\n:\(error)")
+                            }
+                            
+                        }
+                        
+                        let hPath = mPath?.replacingOccurrences(of: ".m", with: ".h")
+                        let hNewPath = mNewPath.replacingOccurrences(of: ".m", with: ".h")
+                        if self.fileManager.fileExists(atPath: hPath!) {
+                            do {
+                                try fileManager.copyItem(atPath: hPath!, toPath: hNewPath)
+                              } catch let error {
+                                print("\nError\n:\(error)")
+                              }
+                                         
+                        }
+                        
+
+                    }
+
+                    
+                    
                 })
+                
             }
         }
     }
