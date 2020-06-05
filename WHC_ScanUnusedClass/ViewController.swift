@@ -326,7 +326,52 @@ class ViewController: NSViewController {
                                 break
                             }
                         }
-                    }else if file.hasSuffix(".m") {
+                    } else if file.hasSuffix(".h") {
+                        var range = fileContent!.range(of: "@protocol")
+                        while range.location != NSNotFound {
+                            let afterContent = fileContent!.substring(from: range.length + range.location)
+                            let returnRange = (afterContent as NSString).range(of: "\n")
+                            
+                            if returnRange.location != NSNotFound {
+                                let firstLineContent = ((afterContent as NSString).substring(to: returnRange.location) as NSString).replacingOccurrences(of: " ", with: "")
+                                if firstLineContent.count > 0 {
+                                    var parenthesesRange = (firstLineContent as NSString).range(of: "<")
+                                    
+                                    if parenthesesRange.location == NSNotFound {
+                                        parenthesesRange = (firstLineContent as NSString).range(of: ";")
+                                    }
+                                    
+                                    if parenthesesRange.location != NSNotFound {
+                                        let className = (firstLineContent as NSString).substring(to: parenthesesRange.location)
+                                            if !classNames.contains(className) && !classNameArray.contains(className) {
+                                                                   if className.count > 0 {
+                                                                       classNames.append(className)
+                                                                   }
+                                         }
+//                                        let bracesRange = (firstLineContent as NSString).range(of: ";")
+//                                        if bracesRange.location != NSNotFound {
+//                                            let className = (firstLineContent as NSString).substring(to: bracesRange.location)
+//                                            if !classNames.contains(className) && !classNameArray.contains(className) {
+//                                                if className.count > 0 {
+//                                                    classNames.append(className)
+//                                                }
+//                                            }
+//                                        }else {
+//                                            if !classNames.contains(firstLineContent) && !classNameArray.contains(firstLineContent) {
+//                                                if firstLineContent.count > 0 {
+//                                                    classNames.append(firstLineContent)
+//                                                }
+//                                            }
+//                                        }
+                                    }
+                                }
+                                fileContent = (afterContent as NSString).substring(from: returnRange.location + returnRange.length) as NSString?
+                                range = fileContent!.range(of: "@protocol")
+                            }else {
+                                break
+                            }
+                        }
+                    } else if file.hasSuffix(".m") {
                         var range = fileContent!.range(of: "@implementation")
                         while range.location != NSNotFound {
                             let afterContent = fileContent!.substring(from: range.length + range.location)
@@ -472,33 +517,34 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                                     classNameArray.append(contentsOf: analysisEngineClassName(path: pathName, file: fileName))
                                 }
                             case .iOS:
-                                if fileName.hasSuffix(".swift") || fileName.hasSuffix(".m") {
+                                if fileName.hasSuffix(".swift") || fileName.hasSuffix(".m") || fileName.hasSuffix(".mm") || fileName.hasSuffix(".h"){
                                     filePathArray.append(pathName)
                                     classNameArray.append(contentsOf: analysisEngineClassName(path: pathName, file: fileName))
-                                }else if fileName.hasSuffix(".h") {
-                                    autoreleasepool {
-                                        let contentData = try! Data(contentsOf: URL(fileURLWithPath: pathName), options: NSData.ReadingOptions.mappedIfSafe);
-                                        var fileContent = NSString(data: contentData, encoding: String.Encoding.utf8.rawValue)
-                                        if fileContent != nil {
-                                            var range = fileContent!.range(of: "@interface")
-                                            while range.location != NSNotFound {
-                                                let afterContent = fileContent!.substring(from: range.length + range.location)
-                                                let returnRange = (afterContent as NSString).range(of: "\n")
-                                                if returnRange.location != NSNotFound {
-                                                    let firstLineContent = (((afterContent as NSString).substring(to: returnRange.location) as NSString).replacingOccurrences(of: " ", with: "") as NSString).replacingOccurrences(of: "\r", with: "")
-                                                    let subArray = firstLineContent.components(separatedBy: ":")
-                                                    if subArray.count > 1 {
-                                                        let superClass = subArray[1]
-                                                        let tempSuperClassArray = superClass.components(separatedBy: "<")
-                                                        let handleSuperClassName = tempSuperClassArray.first!.replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "")
-                                                        if !superClassArray.contains(handleSuperClassName) {
-                                                            superClassArray.append(handleSuperClassName)
+                                    if fileName.hasSuffix(".h") {
+                                        autoreleasepool {
+                                            let contentData = try! Data(contentsOf: URL(fileURLWithPath: pathName), options: NSData.ReadingOptions.mappedIfSafe);
+                                            var fileContent = NSString(data: contentData, encoding: String.Encoding.utf8.rawValue)
+                                            if fileContent != nil {
+                                                var range = fileContent!.range(of: "@interface")
+                                                while range.location != NSNotFound {
+                                                    let afterContent = fileContent!.substring(from: range.length + range.location)
+                                                    let returnRange = (afterContent as NSString).range(of: "\n")
+                                                    if returnRange.location != NSNotFound {
+                                                        let firstLineContent = (((afterContent as NSString).substring(to: returnRange.location) as NSString).replacingOccurrences(of: " ", with: "") as NSString).replacingOccurrences(of: "\r", with: "")
+                                                        let subArray = firstLineContent.components(separatedBy: ":")
+                                                        if subArray.count > 1 {
+                                                            let superClass = subArray[1]
+                                                            let tempSuperClassArray = superClass.components(separatedBy: "<")
+                                                            let handleSuperClassName = tempSuperClassArray.first!.replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "")
+                                                            if !superClassArray.contains(handleSuperClassName) {
+                                                                superClassArray.append(handleSuperClassName)
+                                                            }
                                                         }
+                                                        fileContent = (afterContent as NSString).substring(from: returnRange.location + returnRange.length) as NSString?
+                                                        range = fileContent!.range(of: "@interface")
+                                                    }else {
+                                                        break
                                                     }
-                                                    fileContent = (afterContent as NSString).substring(from: returnRange.location + returnRange.length) as NSString?
-                                                    range = fileContent!.range(of: "@interface")
-                                                }else {
-                                                    break
                                                 }
                                             }
                                         }
@@ -652,10 +698,19 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                             if handleFileContent.contains("[" + className) || handleFileContent.contains(className + ".new") ||
                                 handleFileContent.contains("NSStringFromClass(@" + className) ||
                                 handleFileContent.contains(className + "*") ||
+                                handleFileContent.contains("@protocol" + className ) ||
                                 handleFileContent.contains("<" + className + ">") || superClassArray.contains(className) {
                                 isReference = true
                                 break
                             }
+                        } else if filePath.hasSuffix(".h") {
+                            if handleFileContent.contains(className + "*") ||
+                                          handleFileContent.contains("@protocol" + className) ||
+                                          handleFileContent.contains("<" + className + ">") || superClassArray.contains(className) {
+                                          isReference = true
+                                          break
+                                      }
+                            
                         }
                         break
                     }
