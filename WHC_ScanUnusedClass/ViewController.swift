@@ -156,6 +156,9 @@ class ViewController: NSViewController {
         setResultContent(content: "")
         setNotUseResultContent(content: "")
         processBar.doubleValue = 0;
+        if directoryText.stringValue.count == 0 {
+            directoryText.stringValue = "/Users/sundalong/Desktop/NeedDelete"
+        }
         if directoryText.stringValue.count > 0 {
             filePathArray.removeAll()
             needDeleteFilePathArray.removeAll()
@@ -165,8 +168,11 @@ class ViewController: NSViewController {
             progressLabel.stringValue = "扫描之前，需要计算统计项目所有的类，马上开始别着急请耐心等待一小会........^_^"
             let directoryFileNameArray = try! self.fileManager.contentsOfDirectory(atPath: self.directoryText.stringValue)
 
+            self.startCalculateAllClass(directoryFileNameArray, path: self.directoryText.stringValue)
+            //需要删掉的文件里面用到的类
             DispatchQueue.global().async(execute: {
-                self.startCalculateAllClass(directoryFileNameArray, path: self.directoryText.stringValue)
+                
+                //需要进行比对的文件夹
                 let deletePath = "/Users/sundalong/Desktop/KuaiShou/kidea/ios/Runner";
                 let needDeleteFileNameArray = try! self.fileManager.contentsOfDirectory(atPath: deletePath)
                 self.findNeedDeleteFilePath(needDeleteFileNameArray, path: deletePath)
@@ -336,11 +342,9 @@ class ViewController: NSViewController {
                                 let firstLineContent = ((afterContent as NSString).substring(to: returnRange.location) as NSString).replacingOccurrences(of: " ", with: "")
                                 if firstLineContent.count > 0 {
                                     var parenthesesRange = (firstLineContent as NSString).range(of: "<")
-                                    
                                     if parenthesesRange.location == NSNotFound {
                                         parenthesesRange = (firstLineContent as NSString).range(of: ";")
                                     }
-                                    
                                     if parenthesesRange.location != NSNotFound {
                                         let className = (firstLineContent as NSString).substring(to: parenthesesRange.location)
                                             if !classNames.contains(className) && !classNameArray.contains(className) {
@@ -348,21 +352,6 @@ class ViewController: NSViewController {
                                                                        classNames.append(className)
                                                                    }
                                          }
-//                                        let bracesRange = (firstLineContent as NSString).range(of: ";")
-//                                        if bracesRange.location != NSNotFound {
-//                                            let className = (firstLineContent as NSString).substring(to: bracesRange.location)
-//                                            if !classNames.contains(className) && !classNameArray.contains(className) {
-//                                                if className.count > 0 {
-//                                                    classNames.append(className)
-//                                                }
-//                                            }
-//                                        }else {
-//                                            if !classNames.contains(firstLineContent) && !classNameArray.contains(firstLineContent) {
-//                                                if firstLineContent.count > 0 {
-//                                                    classNames.append(firstLineContent)
-//                                                }
-//                                            }
-//                                        }
                                     }
                                 }
                                 fileContent = (afterContent as NSString).substring(from: returnRange.location + returnRange.length) as NSString?
@@ -371,7 +360,7 @@ class ViewController: NSViewController {
                                 break
                             }
                         }
-                    } else if file.hasSuffix(".m") {
+                    } else if file.hasSuffix(".m") ||  file.hasSuffix(".mm"){
                         var range = fileContent!.range(of: "@implementation")
                         while range.location != NSNotFound {
                             let afterContent = fileContent!.substring(from: range.length + range.location)
@@ -656,12 +645,12 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                 if fileContent != nil {
                     var handleFileContent = ""
                     switch scanLevel {
-                        case .carefully:
-                            handleFileContent = removeAnnotationContent(fileContent)
-                        case .normal:
-                            handleFileContent = fileContent!.replacingOccurrences(of: " ", with: "")
-                        case .fast:
-                            handleFileContent = fileContent! as String
+                    case .carefully:
+                        handleFileContent = removeAnnotationContent(fileContent)
+                    case .normal:
+                        handleFileContent = fileContent!.replacingOccurrences(of: " ", with: "")
+                    case .fast:
+                        handleFileContent = fileContent! as String
                     }
                     switch scanProjectType {
                     case .android:
@@ -694,8 +683,9 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                                 isReference = true
                                 break
                             }
-                        }else if filePath.hasSuffix(".m") {
-                            if handleFileContent.contains("[" + className) || handleFileContent.contains(className + ".new") ||
+                        }else if filePath.hasSuffix(".m") || filePath.hasSuffix(".mm") {
+                            if handleFileContent.contains("[" + className) ||
+                                handleFileContent.contains(className + ".new") ||
                                 handleFileContent.contains("NSStringFromClass(@" + className) ||
                                 handleFileContent.contains(className + "*") ||
                                 handleFileContent.contains("@protocol" + className ) ||
@@ -705,11 +695,11 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                             }
                         } else if filePath.hasSuffix(".h") {
                             if handleFileContent.contains(className + "*") ||
-                                          handleFileContent.contains("@protocol" + className) ||
-                                          handleFileContent.contains("<" + className + ">") || superClassArray.contains(className) {
-                                          isReference = true
-                                          break
-                                      }
+                                handleFileContent.contains("@protocol" + className) ||
+                                handleFileContent.contains("<" + className + ">") || superClassArray.contains(className) {
+                                isReference = true
+                                break
+                            }
                             
                         }
                         break
@@ -717,12 +707,26 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                 }
             }
             if !isReference {
-//                DispatchQueue.main.sync(execute: {
-//                    self.notUseClassCount += 1
-//                    let originTxt = self.notUseClassResultContentView.string.count == 0 ? "" : self.notUseClassResultContentView.string
-//                    self.setNotUseResultContent(content: originTxt + ">>>>> " + className + "\n")
-//                    self.notUseClassCountLabel.stringValue = "项目没使用的类: 总计\(self.notUseClassCount)个"
-//                })
+                //                DispatchQueue.main.sync(execute: {
+                //                    self.notUseClassCount += 1
+                //                    let originTxt = self.notUseClassResultContentView.string.count == 0 ? "" : self.notUseClassResultContentView.string
+                //                    self.setNotUseResultContent(content: originTxt + ">>>>> " + className + "\n")
+                //                    self.notUseClassCountLabel.stringValue = "项目没使用的类: 总计\(self.notUseClassCount)个"
+                //                })
+                
+                let mPath = classToFileMap[className]
+                if(mPath != nil) {
+                    let newPath = "/Users/sundalong/Desktop/deletefile/"
+                    let mNewPath = newPath + URL(fileURLWithPath: mPath!).lastPathComponent
+                    if self.fileManager.fileExists(atPath: mPath!) {
+                        do {
+                            try fileManager.copyItem(atPath: mPath!, toPath: mNewPath)
+                        } catch let error {
+                            print("\nError\n:\(error)")
+                        }
+                    }
+                }
+                
             }else {
                 DispatchQueue.main.sync(execute: {
                     self.notUseClassCount += 1
@@ -732,37 +736,62 @@ private func startCalculateAllClass(_ directoryFileNameArray :[String]!, path: S
                     
                     let mPath = classToFileMap[className]
                     if(mPath != nil) {
-                        let newPath = "/Users/sundalong/Desktop/needFile/"
+                        var newPath = "/Users/sundalong/Desktop/needFile/"
+                        if mPath!.contains("KWYHomePageModule/") {
+                            newPath += "KWYHomePageModule/"
+                        } else if mPath!.contains("KWYMediaEditorModule/") {
+                            newPath += "KWYMediaEditorModule/"
+                        }else if mPath!.contains("KWYMediaExportModule/") {
+                            newPath += "KWYMediaExportModule/"
+                        }else if mPath!.contains("KWYMediaImportModule/") {
+                            newPath += "KWYMediaImportModule/"
+                        }else if mPath!.contains("KWYTextVideoModule/") {
+                            newPath += "KWYTextVideoModule/"
+                        }else if mPath!.contains("KWYRecordModule/") {
+                            newPath += "KWYRecordModule/"
+                        }
+                        var isDirectory = ObjCBool(true)
+                        let exist = fileManager.fileExists(atPath: newPath, isDirectory: &isDirectory)
+                        if !exist {
+                            do {
+                                try fileManager.createDirectory(atPath: newPath, withIntermediateDirectories: true, attributes: nil)
+                            } catch {
+                                NSLog("Couldn't create document directory")
+                            }
+                        }
                         
                         let mNewPath = newPath + URL(fileURLWithPath: mPath!).lastPathComponent
-                        if self.fileManager.fileExists(atPath: mPath!) {
-                            
+                        if self.fileManager.fileExists(atPath: mPath!) && !self.fileManager.fileExists(atPath: mNewPath) {
                             do {
-                                 try fileManager.copyItem(atPath: mPath!, toPath: mNewPath)
-                                } catch let error {
-                                 print("\nError\n:\(error)")
+                                try fileManager.copyItem(atPath: mPath!, toPath: mNewPath)
+                            } catch let error {
+                                print("\nError\n:\(error)")
                             }
-                            
                         }
                         
-                        let hPath = mPath?.replacingOccurrences(of: ".m", with: ".h")
-                        let hNewPath = mNewPath.replacingOccurrences(of: ".m", with: ".h")
-                        if self.fileManager.fileExists(atPath: hPath!) {
+                        var suffix = ".m"
+                        if mPath!.hasSuffix(".mm") {
+                            suffix = ".mm"
+                        }
+                        
+                        var replayce = ".h"
+                        if mPath!.hasSuffix(".h") {
+                            replayce = ".m"
+                        }
+                        
+                        
+                        
+                        let hPath = mPath?.replacingOccurrences(of: suffix, with: replayce)
+                        let hNewPath = mNewPath.replacingOccurrences(of: suffix, with: replayce)
+                        if self.fileManager.fileExists(atPath: hPath!) && !self.fileManager.fileExists(atPath: hNewPath) {
                             do {
                                 try fileManager.copyItem(atPath: hPath!, toPath: hNewPath)
-                              } catch let error {
+                            } catch let error {
                                 print("\nError\n:\(error)")
-                              }
-                                         
+                            }
                         }
-                        
-
                     }
-
-                    
-                    
                 })
-                
             }
         }
     }
